@@ -40,6 +40,10 @@ Vercel uses the Telegram webhook function in `api/telegram.ts`. Do not use
 long polling (`bot.launch()`) on Vercel.
 
 1. Import the project into Vercel.
+   In **Project Settings → Build & Development Settings**, set the Framework
+   Preset to **Other** and clear/disable any static **Output Directory** such as
+   `public`. The explicit Vercel Node function configuration in `vercel.json`
+   serves the webhook; this project does not produce a static website directory.
 2. Add these environment variables:
 
    ```env
