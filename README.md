@@ -41,10 +41,9 @@ long polling (`bot.launch()`) on Vercel.
 
 1. Import the project into Vercel.
    In **Project Settings → Build & Development Settings**, set the Framework
-   Preset to **Other** and clear/disable any static **Output Directory** such as
-   `public`. Vercel automatically detects `api/telegram.ts` as a Node function;
-   `vercel.json` sets its maximum duration. This project does not produce a
-   static website directory.
+   Preset to **Other**. The repository includes `public/index.html` for
+   deployments whose Output Directory is set to `public`. Vercel also detects
+   `api/telegram.ts` as a Node function; `vercel.json` sets its maximum duration.
 2. Add these environment variables:
 
    ```env
