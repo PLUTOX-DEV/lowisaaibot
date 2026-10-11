@@ -240,6 +240,11 @@ Group mode:
 @LoWisaBot explain connection pooling
 ```
 
+Mention the bot directly (for example, `@LoWisaBot hi`) to receive a reply.
+Simple greetings get an immediate response without waiting for the AI provider.
+Use `/aistatus` if tutor responses are delayed; its AI and database checks have
+short time limits and report connection failures in chat.
+
 In a group, you can also reply directly to a message sent by the bot. The
 reply becomes the next turn in the same conversation, so you do not need to
 mention the bot again.

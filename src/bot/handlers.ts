@@ -31,12 +31,47 @@ function richReply(ctx: Context, message: string) {
   return ctx.reply(message, { parse_mode: 'HTML' });
 }
 
+function isGreeting(text: string) {
+  return /^(?:hi|hello|hey|heya|hiya|yo|good morning|good afternoon|good evening)[!.?,\s]*$/i.test(text.trim());
+}
+
+async function replyToGreeting(ctx: Context) {
+  await richReply(ctx, '👋 Hey! I’m here. Ask me a question, or try <code>/learn JavaScript</code> or <code>/challenge databases</code>.');
+}
+
+async function finishWithTimeout<T>(work: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function replyWithTutor(ctx: Context, question: string, trackedText = question, mentioned = false) {
+  if (isGreeting(question)) {
+    await replyToGreeting(ctx);
+    return;
+  }
   await ctx.sendChatAction('typing');
   const statusMessage = await ctx.reply('💭 Thinking…');
   try {
-    await trackContext(ctx, trackedText, true, mentioned);
-    const result = await askTutor({ userId: userId(ctx), chatId: chatId(ctx), question });
+    const tracking = finishWithTimeout(
+      trackContext(ctx, trackedText, true, mentioned).catch((error: unknown) => {
+        console.error('Could not record tutor message activity:', error);
+      }),
+      1_500,
+      undefined
+    );
+    const [result] = await Promise.all([
+      askTutor({ userId: userId(ctx), chatId: chatId(ctx), question }),
+      tracking
+    ]);
     await ctx.telegram.editMessageText(
       statusMessage.chat.id,
       statusMessage.message_id,
@@ -169,7 +204,19 @@ export function registerHandlers(bot: Telegraf<Context>) {
   bot.command('aistatus', async (ctx) => {
     await ctx.sendChatAction('typing');
     const statusMessage = await ctx.reply('🔎 Checking AI and database…');
-    const [ai, database] = await Promise.all([checkAiProvider(), checkDatabase()]);
+    const [ai, database] = await Promise.all([
+      finishWithTimeout(checkAiProvider(), 9_000, {
+        ok: false,
+        provider: env.AI_PROVIDER,
+        latencyMs: 9_000,
+        detail: 'AI check exceeded the 9-second limit.'
+      }),
+      finishWithTimeout(checkDatabase(), 3_500, {
+        ok: false,
+        latencyMs: 3_500,
+        detail: 'Database check exceeded the 3.5-second limit.'
+      })
+    ]);
     const lines = [
       '🩺 <b>Service diagnostics</b>',
       '',
@@ -178,7 +225,12 @@ export function registerHandlers(bot: Telegraf<Context>) {
       '',
       '<i>For detailed server errors, check Vercel → Deployments → Runtime Logs.</i>'
     ].join('\n');
-    await ctx.telegram.editMessageText(statusMessage.chat.id, statusMessage.message_id, undefined, lines, { parse_mode: 'HTML' });
+    try {
+      await ctx.telegram.editMessageText(statusMessage.chat.id, statusMessage.message_id, undefined, lines, { parse_mode: 'HTML' });
+    } catch (error) {
+      console.error('Could not update AI diagnostic status message:', error);
+      await richReply(ctx, lines);
+    }
   });
 
   bot.command('ask', async (ctx) => {
@@ -294,14 +346,14 @@ export function registerHandlers(bot: Telegraf<Context>) {
     if (text.startsWith('/')) return next();
 
     const botUsername = bot.botInfo?.username || env.TELEGRAM_BOT_USERNAME;
-    const mention = new RegExp(`@${botUsername}\\b`, 'i');
+    const mention = new RegExp(`@${escapeRegExp(botUsername)}(?![A-Za-z0-9_])`, 'i');
     const inPrivate = ctx.chat.type === 'private';
     const mentioned = mention.test(text);
     const repliedMessage = 'reply_to_message' in ctx.message ? ctx.message.reply_to_message : undefined;
     const repliedToBot = Boolean(repliedMessage?.from?.is_bot);
     if (!inPrivate && !mentioned && !repliedToBot) return next();
 
-    const question = text.replace(mention, '').trim() || 'Tell me what LoWisa can help with.';
+    const question = text.replace(mention, '').trim() || (mentioned ? 'Hi!' : 'Tell me what LoWisa can help with.');
     if (/\b(?:current|latest|live|today)\b.*\b(?:price|value|worth)\b|\b(?:price|value|worth)\b.*\b(?:btc|bitcoin|eth|ethereum|sol|solana|bnb|ada|doge|xrp|link)\b/i.test(question)) {
       await replyWithCryptoPrices(ctx, question);
       return;
