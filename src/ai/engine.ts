@@ -12,6 +12,7 @@ async function askOpenRouter(question: string, memory: Awaited<ReturnType<typeof
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
+    signal: AbortSignal.timeout(25_000),
     headers: {
       'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',

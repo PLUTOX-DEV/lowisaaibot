@@ -10,8 +10,13 @@ type WebhookRequest = IncomingMessage & { body?: Update };
 
 const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
 registerHandlers(bot);
-bot.catch((error, ctx) => {
+bot.catch(async (error, ctx) => {
   console.error(`Telegram webhook failed for ${ctx.update.update_id}:`, error);
+  try {
+    await ctx.reply('I hit an internal error while processing that message. Please try again.');
+  } catch (replyError) {
+    console.error('Could not send Telegram error reply:', replyError);
+  }
 });
 
 const challengeSeeds = [
@@ -45,37 +50,64 @@ const challengeSeeds = [
 ];
 
 let initialization: Promise<void> | undefined;
-const initialize = () => initialization ??= (async () => {
-  await connectDatabase();
-  for (const challenge of challengeSeeds) {
-    await Challenge.updateOne({ title: challenge.title }, { $set: challenge }, { upsert: true });
+const initialize = () => {
+  if (!initialization) {
+    initialization = (async () => {
+      await connectDatabase();
+      for (const challenge of challengeSeeds) {
+        await Challenge.updateOne({ title: challenge.title }, { $set: challenge }, { upsert: true });
+      }
+      bot.botInfo = await bot.telegram.getMe();
+      await bot.telegram.setMyCommands([
+        { command: 'start', description: 'Start using LoWisa AI' },
+        { command: 'help', description: 'Show all available commands' },
+        { command: 'about', description: 'Learn what LoWisa AI does' },
+        { command: 'ask', description: 'Ask the tutor a question' },
+        { command: 'learn', description: 'Start a guided lesson' },
+        { command: 'challenge', description: 'Get a learning challenge' },
+        { command: 'price', description: 'Get live crypto prices' },
+        { command: 'progress', description: 'View your learning progress' },
+        { command: 'level', description: 'Set your experience level' },
+        { command: 'docs', description: 'Open LoWisa resources' }
+      ]);
+      console.info('Telegram webhook initialized');
+    })().catch((error: unknown) => {
+      initialization = undefined;
+      throw error;
+    });
   }
-  bot.botInfo = await bot.telegram.getMe();
-  await bot.telegram.setMyCommands([
-    { command: 'start', description: 'Start using LoWisa AI' },
-    { command: 'help', description: 'Show all available commands' },
-    { command: 'about', description: 'Learn what LoWisa AI does' },
-    { command: 'ask', description: 'Ask the tutor a question' },
-    { command: 'learn', description: 'Start a guided lesson' },
-    { command: 'challenge', description: 'Get a learning challenge' },
-    { command: 'price', description: 'Get live crypto prices' },
-    { command: 'progress', description: 'View your learning progress' },
-    { command: 'level', description: 'Set your experience level' },
-    { command: 'docs', description: 'Open LoWisa resources' }
-  ]);
-})();
+  return initialization;
+};
 
 const webhook = bot.webhookCallback('/api/telegram', {
   secretToken: process.env.TELEGRAM_WEBHOOK_SECRET
 });
 
 export default async function handler(req: WebhookRequest, res: ServerResponse<IncomingMessage>) {
+  if (req.method === 'GET') {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ ok: true, service: 'lowisa-telegram-webhook' }));
+    return;
+  }
   if (req.method !== 'POST') {
     res.statusCode = 405;
     res.setHeader('Allow', 'POST');
     res.end('Method Not Allowed');
     return;
   }
-  await initialize();
-  await webhook(req, res);
+  try {
+    if (!process.env.TELEGRAM_WEBHOOK_SECRET) {
+      throw new Error('TELEGRAM_WEBHOOK_SECRET is not configured');
+    }
+    await initialize();
+    await webhook(req, res);
+  } catch (error) {
+    console.error('Telegram webhook request failed:', error);
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ ok: false, error: 'Webhook processing failed' }));
+    }
+  }
 }

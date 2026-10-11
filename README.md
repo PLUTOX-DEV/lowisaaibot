@@ -64,12 +64,45 @@ long polling (`bot.launch()`) on Vercel.
 
 4. Register the webhook once:
 
-   ```text
-   https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://your-project.vercel.app/api/telegram&secret_token=<TELEGRAM_WEBHOOK_SECRET>
+   In PowerShell, enter the token and secret interactively so they are not
+   written into the README or shell command history:
+
+   ```powershell
+   $token = Read-Host "Bot token"
+   $secret = Read-Host "Webhook secret"
+   Invoke-RestMethod -Method Post `
+     -Uri "https://api.telegram.org/bot$token/setWebhook" `
+     -Body @{
+       url = "https://your-project.vercel.app/api/telegram"
+       secret_token = $secret
+     }
    ```
 
-Replace both placeholders before opening the URL. Telegram will send new
-messages to Vercel, and the function will connect to MongoDB as needed.
+Use the same secret saved as `TELEGRAM_WEBHOOK_SECRET` in Vercel. Telegram
+should respond with `ok: True`.
+
+### Troubleshooting a bot that does not reply
+
+1. Open `https://your-project.vercel.app/api/telegram` in a browser. A working
+   function responds with JSON containing `"ok": true`.
+2. Check Telegram's webhook status in PowerShell:
+
+   ```powershell
+   $token = Read-Host "Bot token"
+   Invoke-RestMethod "https://api.telegram.org/bot$token/getWebhookInfo" |
+     ConvertTo-Json -Depth 5
+   ```
+
+   Confirm `url` is the Vercel `/api/telegram` URL, `pending_update_count` is
+   not continually increasing, and inspect `last_error_message` if present.
+3. Check Vercel **Runtime Logs** for `Telegram webhook request failed`,
+   `Telegram webhook initialized`, or Telegram update errors.
+4. Confirm Vercel has the current `TELEGRAM_BOT_TOKEN`,
+   `TELEGRAM_WEBHOOK_SECRET`, `MONGODB_URI`, and (for live AI)
+   `OPENROUTER_API_KEY`; redeploy after changing environment variables.
+5. If the token was ever pasted into chat, source control, or a public URL,
+   revoke it with @BotFather, set the replacement in Vercel, redeploy, and
+   register the webhook again.
 
 For local development, continue using `npm run dev`. The Vercel webhook and
 local long-polling entry points are separate.
