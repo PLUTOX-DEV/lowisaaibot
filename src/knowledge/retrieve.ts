@@ -18,7 +18,7 @@ function score(query: string, doc: { title: string; content: string; category: s
 }
 
 export async function retrieveKnowledge(query: string) {
-  const docs = await Knowledge.find({ status: 'approved' }).lean();
+  const docs = await Knowledge.find({ status: 'approved' }).maxTimeMS(5_000).lean();
   return docs
     .map((doc) => ({ doc, score: score(query, doc) }))
     .filter((x) => x.score > 0)

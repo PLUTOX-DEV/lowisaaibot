@@ -66,6 +66,7 @@ const initialize = () => {
         { command: 'learn', description: 'Start a guided lesson' },
         { command: 'challenge', description: 'Get a learning challenge' },
         { command: 'price', description: 'Get live crypto prices' },
+        { command: 'aistatus', description: 'Check AI and database connections' },
         { command: 'progress', description: 'View your learning progress' },
         { command: 'level', description: 'Set your experience level' },
         { command: 'docs', description: 'Open LoWisa resources' }

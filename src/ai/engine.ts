@@ -5,6 +5,7 @@ import { getMemory, appendMemory } from './memory.js';
 import { classifyTopic } from './classify.js';
 
 async function askOpenRouter(question: string, memory: Awaited<ReturnType<typeof getMemory>>, docs: Awaited<ReturnType<typeof retrieveKnowledge>>) {
+  if (!env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY is not configured');
   const context = buildContext(docs);
   const conversation = memory
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
@@ -12,7 +13,7 @@ async function askOpenRouter(question: string, memory: Awaited<ReturnType<typeof
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
-    signal: AbortSignal.timeout(25_000),
+    signal: AbortSignal.timeout(15_000),
     headers: {
       'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
@@ -42,6 +43,48 @@ async function askOpenRouter(question: string, memory: Awaited<ReturnType<typeof
 
   return payload.choices?.[0]?.message?.content?.trim()
     || 'I could not produce a response. Try the question again.';
+}
+
+export async function checkAiProvider() {
+  if (env.AI_PROVIDER === 'mock') {
+    return { ok: true, provider: 'mock', latencyMs: 0, detail: 'Mock mode is active; no live AI provider is configured.' };
+  }
+  if (!env.OPENROUTER_API_KEY) {
+    return { ok: false, provider: 'openrouter', latencyMs: 0, detail: 'OPENROUTER_API_KEY is missing from deployment environment variables.' };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      signal: AbortSignal.timeout(8_000),
+      headers: {
+        'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        ...(env.OPENROUTER_SITE_URL ? { 'HTTP-Referer': env.OPENROUTER_SITE_URL } : {}),
+        ...(env.OPENROUTER_SITE_NAME ? { 'X-Title': env.OPENROUTER_SITE_NAME } : {})
+      },
+      body: JSON.stringify({
+        model: env.OPENROUTER_MODEL,
+        max_tokens: 8,
+        messages: [{ role: 'user', content: 'Reply with only OK.' }]
+      })
+    });
+    if (!response.ok) {
+      return { ok: false, provider: 'openrouter', latencyMs: Date.now() - startedAt, detail: `Provider returned HTTP ${response.status}.` };
+    }
+    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    if (!payload.choices?.[0]?.message?.content) {
+      return { ok: false, provider: 'openrouter', latencyMs: Date.now() - startedAt, detail: 'Provider returned no assistant response.' };
+    }
+    return { ok: true, provider: 'openrouter', latencyMs: Date.now() - startedAt, detail: 'Live response received.' };
+  } catch (error) {
+    console.error('OpenRouter health probe failed:', error);
+    const detail = error instanceof Error && error.name === 'TimeoutError'
+      ? 'Provider timed out after 8 seconds.'
+      : 'Could not reach the provider. Check Vercel runtime logs.';
+    return { ok: false, provider: 'openrouter', latencyMs: Date.now() - startedAt, detail };
+  }
 }
 
 

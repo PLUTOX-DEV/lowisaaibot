@@ -1,7 +1,7 @@
 import { Telegraf } from 'telegraf';
 import type { Context } from 'telegraf';
 import { env } from '../config/env.js';
-import { askTutor, generateLearningLesson } from '../ai/engine.js';
+import { askTutor, checkAiProvider, generateLearningLesson } from '../ai/engine.js';
 import { getCommunityStats, formatStats } from '../analytics/report.js';
 import { trackContext } from './context.js';
 import { requireAdmin, isAdmin } from './auth.js';
@@ -10,6 +10,7 @@ import { Raid } from '../models/Raid.js';
 import { User } from '../models/User.js';
 import { Knowledge } from '../models/Knowledge.js';
 import { getCryptoPrices, resolveCoins } from '../services/crypto.js';
+import { checkDatabase } from '../services/db.js';
 
 function chatId(ctx: Context) { return String(ctx.chat?.id ?? 'unknown'); }
 function userId(ctx: Context) { return String(ctx.from?.id ?? 'unknown'); }
@@ -28,6 +29,30 @@ function escapeHtml(value: string) {
 
 function richReply(ctx: Context, message: string) {
   return ctx.reply(message, { parse_mode: 'HTML' });
+}
+
+async function replyWithTutor(ctx: Context, question: string, trackedText = question, mentioned = false) {
+  await ctx.sendChatAction('typing');
+  const statusMessage = await ctx.reply('💭 Thinking…');
+  try {
+    await trackContext(ctx, trackedText, true, mentioned);
+    const result = await askTutor({ userId: userId(ctx), chatId: chatId(ctx), question });
+    await ctx.telegram.editMessageText(
+      statusMessage.chat.id,
+      statusMessage.message_id,
+      undefined,
+      formatAssistantText(result.answer),
+      { parse_mode: 'HTML' }
+    );
+  } catch (error) {
+    console.error('Tutor response failed:', error);
+    await ctx.telegram.editMessageText(
+      statusMessage.chat.id,
+      statusMessage.message_id,
+      undefined,
+      '⚠️ I could not get an AI response. Try /aistatus to check the AI and database connections, then try again.'
+    );
+  }
 }
 
 function formatAssistantText(value: string) {
@@ -83,6 +108,7 @@ export function registerHandlers(bot: Telegraf<Context>) {
       '<code>/learn &lt;topic&gt;</code> — start a lesson',
       '<code>/challenge [topic]</code> — get a challenge',
       '<code>/price BTC SOL ETH</code> — current crypto prices',
+      '<code>/aistatus</code> — check AI and database connectivity',
       '<code>/progress</code> — view your learning progress',
       '<code>/level &lt;level&gt;</code> — set your experience level',
       '<code>/docs</code> — official resource links',
@@ -140,24 +166,42 @@ export function registerHandlers(bot: Telegraf<Context>) {
     await replyWithCryptoPrices(ctx, cleanCommand(raw, 'price') || 'BTC SOL');
   });
 
+  bot.command('aistatus', async (ctx) => {
+    await ctx.sendChatAction('typing');
+    const statusMessage = await ctx.reply('🔎 Checking AI and database…');
+    const [ai, database] = await Promise.all([checkAiProvider(), checkDatabase()]);
+    const lines = [
+      '🩺 <b>Service diagnostics</b>',
+      '',
+      `${ai.ok ? '✅' : '❌'} <b>AI (${escapeHtml(ai.provider)}):</b> ${escapeHtml(ai.detail)}${ai.latencyMs ? ` (${ai.latencyMs} ms)` : ''}`,
+      `${database.ok ? '✅' : '❌'} <b>MongoDB:</b> ${escapeHtml(database.detail)}${database.latencyMs ? ` (${database.latencyMs} ms)` : ''}`,
+      '',
+      '<i>For detailed server errors, check Vercel → Deployments → Runtime Logs.</i>'
+    ].join('\n');
+    await ctx.telegram.editMessageText(statusMessage.chat.id, statusMessage.message_id, undefined, lines, { parse_mode: 'HTML' });
+  });
+
   bot.command('ask', async (ctx) => {
     const raw = 'text' in ctx.message && typeof ctx.message.text === 'string' ? ctx.message.text : '';
     const question = cleanCommand(raw, 'ask');
     if (!question) return ctx.reply('Try `/ask explain database connection pooling`.');
-    await trackContext(ctx, question, true, false);
-    await ctx.sendChatAction('typing');
-    const result = await askTutor({ userId: userId(ctx), chatId: chatId(ctx), question });
-    await richReply(ctx, formatAssistantText(result.answer));
+    await replyWithTutor(ctx, question);
   });
 
   bot.command('learn', async (ctx) => {
     const raw = 'text' in ctx.message && typeof ctx.message.text === 'string' ? ctx.message.text : '';
     const topic = cleanCommand(raw, 'learn') || 'software engineering fundamentals';
-    await trackContext(ctx, topic, true, false);
     await ctx.sendChatAction('typing');
-    const result = await generateLearningLesson(topic, userId(ctx), chatId(ctx));
-    await User.updateOne({ telegramId: userId(ctx) }, { $addToSet: { learningTopics: topic } });
-    await richReply(ctx, formatAssistantText(result.answer));
+    const statusMessage = await ctx.reply('📚 Preparing your lesson…');
+    try {
+      await trackContext(ctx, topic, true, false);
+      const result = await generateLearningLesson(topic, userId(ctx), chatId(ctx));
+      await User.updateOne({ telegramId: userId(ctx) }, { $addToSet: { learningTopics: topic } });
+      await ctx.telegram.editMessageText(statusMessage.chat.id, statusMessage.message_id, undefined, formatAssistantText(result.answer), { parse_mode: 'HTML' });
+    } catch (error) {
+      console.error('Lesson generation failed:', error);
+      await ctx.telegram.editMessageText(statusMessage.chat.id, statusMessage.message_id, undefined, '⚠️ I could not prepare the lesson. Try /aistatus to check the connections, then try again.');
+    }
   });
 
   bot.command('challenge', async (ctx) => {
@@ -262,14 +306,6 @@ export function registerHandlers(bot: Telegraf<Context>) {
       await replyWithCryptoPrices(ctx, question);
       return;
     }
-    await trackContext(ctx, question, true, mentioned || repliedToBot);
-    await ctx.sendChatAction('typing');
-    try {
-      const result = await askTutor({ userId: userId(ctx), chatId: chatId(ctx), question });
-      await richReply(ctx, formatAssistantText(result.answer));
-    } catch (error) {
-      console.error(error);
-      await ctx.reply('I hit an internal error while thinking. Try again in a moment.');
-    }
+    await replyWithTutor(ctx, question, question, mentioned || repliedToBot);
   });
 }

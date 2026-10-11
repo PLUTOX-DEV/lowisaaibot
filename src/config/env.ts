@@ -28,7 +28,3 @@ const schema = z.object({
 });
 
 export const env = schema.parse(process.env);
-
-if (env.AI_PROVIDER === 'openrouter' && !env.OPENROUTER_API_KEY) {
-  throw new Error('OPENROUTER_API_KEY is required when AI_PROVIDER=openrouter');
-}

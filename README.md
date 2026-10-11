@@ -207,6 +207,7 @@ User commands:
 - `/learn <topic>` — start a tutor lesson
 - `/challenge [topic]` — get a challenge
 - `/price [coins]` — current USD prices and 24-hour changes, for example `/price BTC SOL ETH`
+- `/aistatus` — check the AI provider and MongoDB connection
 - `/progress` — view your tracked learning progress
 - `/level <level>` — set beginner, junior, intermediate, or advanced
 - `/docs` — show LoWisa resource links

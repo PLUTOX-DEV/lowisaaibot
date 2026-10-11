@@ -6,7 +6,7 @@ function conversationKey(userId: string, chatId: string) {
 }
 
 export async function getMemory(userId: string, chatId: string) {
-  const doc = await Conversation.findOne({ key: conversationKey(userId, chatId) }).lean();
+  const doc = await Conversation.findOne({ key: conversationKey(userId, chatId) }).maxTimeMS(5_000).lean();
   return (doc?.messages ?? []).slice(-env.MEMORY_MESSAGES);
 }
 
