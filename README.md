@@ -2,25 +2,23 @@
 
 A TypeScript/Node.js Telegram bot that brings the LoWisa teaching philosophy into a Telegram community.
 
-## AI provider: OpenRouter
+## AI provider: Gemini free tier by default
 
-This starter is wired for **OpenRouter first**. The bot calls OpenRouter directly over HTTP at `https://openrouter.ai/api/v1`, so it does **not** need the OpenAI Node SDK. `openrouter/auto` can route requests automatically; you can also set an explicit model ID from the OpenRouter catalog.
+The bot now uses the **Google Gemini API** by default. Google AI Studio offers a free tier for supported models, with rate limits; you do not need to add paid API credits to get started. A free API key is still required. Availability and quotas depend on the model and your account, and may change.
 
-The bot defaults to:
+- Create a key: https://aistudio.google.com/app/apikey
+- Default provider: `AI_PROVIDER=gemini`
+- Default model: `GEMINI_MODEL=gemini-3.8-flash`
+- API requests are sent directly to Google's Gemini REST API; no additional AI SDK is required.
+- If the free quota is exhausted, the bot reports the limit and you can retry after the quota resets. It does not silently switch to a paid provider.
 
-```env
-AI_PROVIDER=openrouter
-OPENROUTER_MODEL=openrouter/auto
-```
-
-You can replace `OPENROUTER_MODEL` with any model ID available in the OpenRouter catalog.
+OpenRouter remains an optional provider. Set `AI_PROVIDER=openrouter` and configure `OPENROUTER_API_KEY` if you intentionally want to use it. `AI_PROVIDER=mock` is only a local fallback with canned responses, not real AI.
 
 ## What is included
 
 - LoWisa project knowledge base with seed content derived from the public LoWisa website.
 - RAG-style retrieval from MongoDB knowledge documents.
-- OpenRouter AI support via direct HTTP.
-- Mock AI mode for local development without an API key.
+- Google Gemini live AI support on the free tier, plus optional OpenRouter and mock development modes.
 - Private-chat tutor mode.
 - Group-mode mention handling: `@LoWisaBot <question>`.
 - Rich Telegram formatting for onboarding, help, docs, about, and progress views.
@@ -36,36 +34,23 @@ You can replace `OPENROUTER_MODEL` with any model ID available in the OpenRouter
 
 ## Deploy on Vercel
 
-Vercel uses the Telegram webhook function in `api/telegram.ts`. Do not use
-long polling (`bot.launch()`) on Vercel.
+Vercel uses the Telegram webhook function in `api/telegram.ts`. Do not use long polling (`bot.launch()`) on Vercel.
 
-1. Import the project into Vercel.
-   In **Project Settings → Build & Development Settings**, set the Framework
-   Preset to **Other**. The repository includes `public/index.html` for
-   deployments whose Output Directory is set to `public`. Vercel also detects
-   `api/telegram.ts` as a Node function; `vercel.json` sets its maximum duration.
-2. Add these environment variables:
+1. Import the project into Vercel. In **Project Settings → Build & Development Settings**, set the Framework Preset to **Other**. The repository includes `public/index.html` for deployments whose Output Directory is set to `public`. Vercel also detects `api/telegram.ts` as a Node function; `vercel.json` sets its maximum duration.
+2. Add these environment variables in Vercel:
 
    ```env
    TELEGRAM_BOT_TOKEN=your_telegram_bot_token
    TELEGRAM_BOT_USERNAME=LoWisaBot
    TELEGRAM_WEBHOOK_SECRET=replace-with-a-long-random-value
    MONGODB_URI=mongodb+srv://...
-   AI_PROVIDER=openrouter
-   OPENROUTER_API_KEY=your_openrouter_key
-   OPENROUTER_MODEL=openrouter/auto
+   AI_PROVIDER=gemini
+   GEMINI_API_KEY=your_free_google_ai_studio_key
+   GEMINI_MODEL=gemini-3.8-flash
    ```
 
-3. Deploy. Your webhook URL is:
-
-   ```text
-   https://your-project.vercel.app/api/telegram
-   ```
-
-4. Register the webhook once:
-
-   In PowerShell, enter the token and secret interactively so they are not
-   written into the README or shell command history:
+3. Deploy. Your webhook URL is `https://your-project.vercel.app/api/telegram`.
+4. Register the webhook once. In PowerShell, enter the token and secret interactively so they are not written into the README or shell command history:
 
    ```powershell
    $token = Read-Host "Bot token"
@@ -78,34 +63,25 @@ long polling (`bot.launch()`) on Vercel.
      }
    ```
 
-Use the same secret saved as `TELEGRAM_WEBHOOK_SECRET` in Vercel. Telegram
-should respond with `ok: True`.
+Use the same secret saved as `TELEGRAM_WEBHOOK_SECRET` in Vercel. Telegram should respond with `ok: True`.
 
 ### Troubleshooting a bot that does not reply
 
-1. Open `https://your-project.vercel.app/api/telegram` in a browser. A working
-   function responds with JSON containing `"ok": true`.
+1. Open `https://your-project.vercel.app/api/telegram` in a browser. A working function responds with JSON containing `"ok": true`.
 2. Check Telegram's webhook status in PowerShell:
 
    ```powershell
    $token = Read-Host "Bot token"
-   Invoke-RestMethod "https://api.telegram.org/bot$token/getWebhookInfo" |
-     ConvertTo-Json -Depth 5
+   Invoke-RestMethod "https://api.telegram.org/bot$token/getWebhookInfo" | ConvertTo-Json -Depth 5
    ```
 
-   Confirm `url` is the Vercel `/api/telegram` URL, `pending_update_count` is
-   not continually increasing, and inspect `last_error_message` if present.
-3. Check Vercel **Runtime Logs** for `Telegram webhook request failed`,
-   `Telegram webhook initialized`, or Telegram update errors.
-4. Confirm Vercel has the current `TELEGRAM_BOT_TOKEN`,
-   `TELEGRAM_WEBHOOK_SECRET`, `MONGODB_URI`, and (for live AI)
-   `OPENROUTER_API_KEY`; redeploy after changing environment variables.
-5. If the token was ever pasted into chat, source control, or a public URL,
-   revoke it with @BotFather, set the replacement in Vercel, redeploy, and
-   register the webhook again.
+   Confirm `url` is the Vercel `/api/telegram` URL, `pending_update_count` is not continually increasing, and inspect `last_error_message` if present.
+3. Check Vercel **Runtime Logs** for `Telegram webhook request failed`, `Telegram webhook initialized`, or Telegram update errors.
+4. Confirm Vercel has `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `MONGODB_URI`, `AI_PROVIDER=gemini`, and `GEMINI_API_KEY`; redeploy after changing environment variables.
+5. Run `/aistatus` in Telegram. It checks the configured AI provider and MongoDB connection. Gemini free-tier rate limits can temporarily prevent responses.
+6. If the Telegram token was ever pasted into chat, source control, or a public URL, revoke it with @BotFather, set the replacement in Vercel, redeploy, and register the webhook again.
 
-For local development, continue using `npm run dev`. The Vercel webhook and
-local long-polling entry points are separate.
+For local development, use `npm run dev`. The Vercel webhook and local long-polling entry points are separate.
 
 ## Architecture
 
@@ -124,10 +100,10 @@ Telegraf bot
    +---- Admin API ------- stats/knowledge/approval
    |
    v
-OpenRouter (recommended)
+Google Gemini API (free tier by default)
    |
    v
-Selected LLM / Auto Router
+Tutor answer
 ```
 
 ## Requirements
@@ -135,7 +111,7 @@ Selected LLM / Auto Router
 - Node.js 20+
 - MongoDB 7+ (local or Atlas)
 - Telegram bot token from `@BotFather`
-- OpenRouter API key for live AI responses
+- Free Gemini API key from https://aistudio.google.com/app/apikey
 
 ## Setup
 
@@ -144,21 +120,7 @@ npm install
 cp .env.example .env
 ```
 
-Then edit `.env`:
-
-```env
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-MONGODB_URI=mongodb://127.0.0.1:27017/lowisa_telegram_ai
-AI_PROVIDER=openrouter
-OPENROUTER_API_KEY=your_openrouter_api_key
-OPENROUTER_MODEL=openrouter/auto
-```
-
-In a Telegram group, `/stats`, `/report`, `/raid`, and `/knowledge` can only be
-used by users whose Telegram status is **administrator** or **creator**. The bot
-must be added to the group so it can check member status. The REST admin API
-does not use an API key; protect it with a private network, reverse proxy, or
-other access-control layer before exposing it publicly.
+Edit `.env` with your Telegram token, MongoDB connection string, and Gemini API key. Keep all keys server-side and never commit `.env`.
 
 Seed the starter LoWisa knowledge:
 
@@ -172,9 +134,7 @@ Start the bot:
 npm run dev
 ```
 
-Each startup synchronizes the Telegram command menu with the commands supported
-by the current bot version. Users may need to reopen the chat or Telegram menu
-to see the refreshed list.
+Each startup synchronizes the Telegram command menu with the commands supported by the current bot version. Users may need to reopen the chat or Telegram menu to see the refreshed list.
 
 Build for production:
 
@@ -183,19 +143,11 @@ npm run build
 npm start
 ```
 
-## No external AI during local development
+## AI modes
 
-You can switch to mock mode:
-
-```env
-AI_PROVIDER=mock
-```
-
-Then start normally:
-
-```bash
-npm run dev
-```
+- `AI_PROVIDER=gemini`: real AI using the Gemini API. Free quota and rate limits apply; a key is required, but a paid API plan is not required to start.
+- `AI_PROVIDER=mock`: canned local responses only; use for development without an AI key.
+- `AI_PROVIDER=openrouter`: optional alternative; may involve paid models or provider-specific free limits. It is not used as an automatic fallback.
 
 ## Telegram commands
 
@@ -215,9 +167,7 @@ User commands:
 
 ### Live crypto prices
 
-The bot supports these common coins:
-
-`BTC`, `ETH`, `SOL`, `BNB`, `ADA`, `DOGE`, `XRP`, and `LINK`.
+The bot supports these common coins: `BTC`, `ETH`, `SOL`, `BNB`, `ADA`, `DOGE`, `XRP`, and `LINK`.
 
 Examples:
 
@@ -228,26 +178,9 @@ What is the current price of SOL and BTC?
 What is the latest ETH value?
 ```
 
-Prices are fetched from CoinGecko at request time and include the USD price,
-24-hour change, source, and retrieval timestamp. Market data can change
-quickly, so use the displayed timestamp and verify important financial
-decisions with a trusted exchange or market-data provider. The bot does not
-provide investment advice.
+Prices are fetched from CoinGecko at request time and include the USD price, 24-hour change, source, and retrieval timestamp. Market data can change quickly, so use the displayed timestamp and verify important financial decisions with a trusted exchange or market-data provider. The bot does not provide investment advice.
 
-Group mode:
-
-```text
-@LoWisaBot explain connection pooling
-```
-
-Mention the bot directly (for example, `@LoWisaBot hi`) to receive a reply.
-Simple greetings get an immediate response without waiting for the AI provider.
-Use `/aistatus` if tutor responses are delayed; its AI and database checks have
-short time limits and report connection failures in chat.
-
-In a group, you can also reply directly to a message sent by the bot. The
-reply becomes the next turn in the same conversation, so you do not need to
-mention the bot again.
+In a Telegram group, mention the bot directly (for example, `@LoWisaBot explain connection pooling`) to receive a reply. Simple greetings get an immediate response without waiting for the AI provider. Use `/aistatus` if tutor responses are delayed. In a group, you can also reply directly to a message sent by the bot.
 
 Admin commands:
 
@@ -260,9 +193,7 @@ Admin commands:
 - `/knowledge approved` — review approved knowledge entries
 - `/knowledge rejected` — review rejected knowledge entries
 
-Admin bot commands only work in Telegram groups or supergroups, and only for
-users with the Telegram status **administrator** or **creator**. The bot must
-be able to read group member status.
+Admin bot commands only work in Telegram groups or supergroups, and only for users with Telegram status **administrator** or **creator**. The bot must be able to read group member status.
 
 ## Admin API
 
@@ -277,42 +208,21 @@ POST /api/admin/knowledge/:id/reject
 PATCH /api/admin/knowledge/:id
 ```
 
-The admin REST routes do not require an API key. Do not expose them directly to
-the public internet without adding authentication at the deployment layer.
+The admin REST routes do not require an API key. Do not expose them directly to the public internet without adding authentication at the deployment layer.
 
 Knowledge API details:
-
 - `status` accepts `pending`, `approved`, or `rejected`.
 - `limit` is capped at 100.
 - New entries default to `pending`.
-- `PATCH` supports `title`, `content`, `category`, `tags`, `sourceUrl`, and
-  `sourceName`.
+- `PATCH` supports `title`, `content`, `category`, `tags`, `sourceUrl`, and `sourceName`.
 - `tags` must be an array of strings.
 
 ## Seed knowledge
 
-`npm run seed` inserts a curated starter set covering:
-
-- What LoWisa is
-- System Immersion
-- AI coding tutor behavior
-- 25 engineering domains
-- Audit My AI Code
-- Applied Math Lab
-- Project continuation
-- Safe sandboxing
-- Learning cohorts
-- Clock it / community learning
-- Official resources
+`npm run seed` inserts curated starter content covering LoWisa, System Immersion, AI coding tutor behavior, engineering domains, code auditing, applied math, safe sandboxing, learning cohorts, and official resources.
 
 The public LoWisa site can change, so keep the seed data and source URLs maintained as the product evolves.
 
-## OpenRouter notes
-
-OpenRouter supports an OpenAI-compatible API and automatic provider/model routing. Its current docs use the endpoint `https://openrouter.ai/api/v1`. Optional `HTTP-Referer` and `X-Title` headers are supported for app attribution.
-
-For production, monitor usage and model pricing in OpenRouter because `openrouter/auto` can route different requests to different models. OpenRouter also supports explicit model fallbacks when you need more control.
-
 ## Production hardening
 
-Before production, add webhook deployment, rate limiting, queueing, Redis, audit logs, stricter admin RBAC, secret management, a dedicated vector index (MongoDB Atlas Vector Search or another vector database), and abuse controls. Do not allow an AI model to execute destructive admin actions directly; use explicit tools and approvals.
+Before production, add webhook deployment, rate limiting, queueing, Redis, audit logs, stricter admin RBAC, secret management, a dedicated vector index, and abuse controls. Do not allow an AI model to execute destructive admin actions directly; use explicit tools and approvals.
