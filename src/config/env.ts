@@ -8,8 +8,11 @@ const schema = z.object({
   TELEGRAM_BOT_USERNAME: z.string().min(1).default('LoWisaBot'),
   MONGODB_URI: z.string().min(1),
 
-  // AI provider for the bot. OpenRouter uses a direct HTTP call, so no OpenAI SDK is required.
-  AI_PROVIDER: z.enum(['mock', 'openrouter']).default('mock'),
+  // Gemini has a free tier. OpenRouter remains available as an optional provider.
+  AI_PROVIDER: z.enum(['mock', 'gemini', 'openrouter']).default('gemini'),
+
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default('gemini-3.8-flash'),
 
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_MODEL: z.string().default('openrouter/auto'),
